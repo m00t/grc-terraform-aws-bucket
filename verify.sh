@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Week 1 verification. Run after `terraform apply`.
+# Run after `terraform apply`.
 # Confirms SC-28 (encryption), CM-6 (versioning), AC-3 (public access block).
 set -euo pipefail
 
