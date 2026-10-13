@@ -1,0 +1,51 @@
+# grc-gate: run the policy gate on every pull request.
+
+name: grc-gate
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  grc-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      #  Installs Conftest (pins a version, does not use the latest)
+      - name: Install Conftest
+        run: |
+          curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v0.62.0/conftest_0.62.0_Linux_x86_64.tar.gz" | tar xz conftest
+          sudo mv conftest /usr/local/bin/
+          conftest --version
+          
+      #   Runs three policy namespaces against the committed plan.json.
+      #       Writes the results to evidence/conftest-results.json.
+      #       Fails the job if any namespace reports a failure.
+      - name: Run policy gate
+        run: |
+          mkdir -p evidence
+          set +e
+          conftest test plan.json \
+            --policy policies \
+            --namespace compliance.sc28_aws \
+            --namespace compliance.ac3_aws \
+            --namespace compliance.cm6_aws \
+            --output json > evidence/conftest-results.json
+          status=$?
+          set -e
+          cat evidence/conftest-results.json
+          exit $status
+
+      # Uploads evidence/ as a build artifact, with `if: always()` so the evidence is saved even when the gate fails. CI evidence survives the failure.
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grc-gate-evidence
+          path: evidence/
