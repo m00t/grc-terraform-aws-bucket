@@ -28,7 +28,6 @@ locals {
   log_name     = "${var.project_name}-${var.environment}-logs-${random_id.suffix.hex}"
 }
 
-# The two base buckets are here so the skeleton validates. The controls are yours.
 resource "aws_s3_bucket" "primary" {
   bucket = local.primary_name
 }

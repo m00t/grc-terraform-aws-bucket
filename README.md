@@ -74,7 +74,7 @@ encryption, public access or tagging by hand: the pipeline does it in seconds.
 **What the gate does:**
 
 1. Installs Conftest at a pinned version (`0.62.0`).
-2. Runs the SC-28, AC-3 and CM-6 policies against the committed Terraform plan (`plan.json`).
+2. Generates the Terraform plan from the branch's code, then runs the SC-28, AC-3 and CM-6 policies against it.
 3. Fails the job if any policy reports a violation (fail closed).
 4. Uploads the results (`evidence/conftest-results.json`) as a build artifact on every run, pass or fail.
 
@@ -94,3 +94,34 @@ Example failure from #2:
 SC-28: aws_s3_bucket.primary has no server-side encryption configuration.
 Remediation: add an aws_s3_bucket_server_side_encryption_configuration with bucket = aws_s3_bucket.primary.id.
 ```
+
+## Keyless CI: Generating the Plan with GitHub OIDC
+
+The gate generates the Terraform plan itself on every pull request, from the code in the branch,
+instead of trusting a committed `plan.json`. To do that, CI needs to read AWS, and it does so
+without any stored credentials.
+
+**How it works:** GitHub issues the workflow a short-lived, signed OIDC token that identifies the
+exact repository and event. AWS trusts GitHub as an identity provider and exchanges that token for
+temporary credentials on a read-only IAM role (`ReadOnlyAccess`). The credentials expire on their
+own within the hour. The role's trust policy accepts tokens only from this repository, matched on
+GitHub's immutable account and repository IDs, so a renamed or recreated repository with the same
+name cannot assume it.
+
+**Why keyless beats stored credentials:** a stored access key is a long-lived secret. It can leak
+through logs, forks or a compromised CI system, it works from anywhere until someone notices and
+revokes it, and it has to be rotated by hand. With OIDC there is no secret to steal. Every session
+is minted on demand, scoped to one repository, limited to read-only access, and expires
+automatically. Each login is also recorded in AWS CloudTrail as a web-identity session tied to the
+repository and event, which gives auditors a clear trail of who accessed the account and why.
+
+| Pull request | Change | Result |
+|---|---|---|
+| [#4](https://github.com/m00t/grc-terraform-aws-bucket/pull/4) | Generate the plan in CI via OIDC | ✅ Plan generated from `main.tf`, all policies passed |
+| [#5](https://github.com/m00t/grc-terraform-aws-bucket/pull/5) | Primary bucket encryption removed from `main.tf` | ❌ SC-28 failed, merge blocked |
+
+**Lesson learned:** the first OIDC attempt was denied (`Not authorized to perform
+sts:AssumeRoleWithWebIdentity`). The CloudTrail record of the failed login showed that GitHub's
+token subject includes immutable IDs (`repo:OWNER@ID/REPO@ID:pull_request`), not the
+`repo:OWNER/REPO:*` format the trust policy expected. Updating the trust policy to that format
+fixed it, and it binds the role more tightly than a name-based match.
