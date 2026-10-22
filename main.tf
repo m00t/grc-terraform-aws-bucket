@@ -28,7 +28,6 @@ locals {
   log_name     = "${var.project_name}-${var.environment}-logs-${random_id.suffix.hex}"
 }
 
-# The two base buckets are here so the skeleton validates. The controls are yours.
 resource "aws_s3_bucket" "primary" {
   bucket = local.primary_name
 }
@@ -37,18 +36,9 @@ resource "aws_s3_bucket" "log" {
   bucket = local.log_name
 }
 
-# SC-28: Encrypt the primary bucket
-resource "aws_s3_bucket_server_side_encryption_configuration" "primary_encryption" {
-  bucket = aws_s3_bucket.primary.id
 
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
 
-# SC-28: Encrypt the log bucket
+# SC-28: Encrypt log bucket
 resource "aws_s3_bucket_server_side_encryption_configuration" "log_encryption" {
   bucket = aws_s3_bucket.log.id
 
@@ -110,8 +100,3 @@ resource "aws_s3_bucket_logging" "primary_logging" {
   target_prefix = "log/"
 }
 
-# SC-28: Attestation output for primary bucket encryption algorithm
-output "primary_bucket_encryption_algorithm" {
-  description = "The server-side encryption algorithm in effect for the primary bucket."
-  value       = tolist(aws_s3_bucket_server_side_encryption_configuration.primary_encryption.rule)[0].apply_server_side_encryption_by_default[0].sse_algorithm
-}
