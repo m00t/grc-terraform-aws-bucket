@@ -50,6 +50,7 @@ jobs:
       #       Writes the results to evidence/conftest-results.json.
       #       Fails the job if any namespace reports a failure.
       - name: Run policy gate
+        id: gate
         run: |
           mkdir -p evidence
           set +e
@@ -62,12 +63,38 @@ jobs:
           status=$?
           set -e
           cat evidence/conftest-results.json
-          exit $status
+          cp plan.json evidence/plan.json
+          echo "status=$status" >> "$GITHUB_OUTPUT"
 
+      # Install Cosign at a pinned version.
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.1'
+
+      # Bundle the evidence, record its hash, and sign it keyless with the workflow's OIDC identity.
+      - name: Bundle, hash and sign evidence
+        run: |
+          tar -czf evidence.tar.gz evidence/
+          sha256sum evidence.tar.gz > evidence.tar.gz.sha256
+          cosign sign-blob --yes --bundle evidence.sig.bundle evidence.tar.gz
+          
       # Uploads evidence/ as a build artifact, with `if: always()` so the evidence is saved even when the gate fails. CI evidence survives the failure.
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: grc-gate-evidence
-          path: evidence/
+          path: |
+            evidence.tar.gz
+            evidence.tar.gz.sha256
+            evidence.sig.bundle
+
+     # Fail closed: the pass/fail decision runs last, after evidence is signed and uploaded.
+      - name: Enforce gate result
+        run: |
+          echo "Policy gate exit status: ${{ steps.gate.outputs.status }}"
+          if [ "${{ steps.gate.outputs.status }}" != "0" ]; then
+            echo "One or more policies failed. Blocking."
+            exit 1
+          fi
