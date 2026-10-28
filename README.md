@@ -18,6 +18,7 @@ This Terraform module provisions an AWS S3 storage bucket engineered to meet rig
 * `evidence/`: Contains JSON proof artifacts generated from Terraform execution plans.
 * `policies/`: Rego policies and unit tests that enforce SC-28, AC-3 and CM-6 against the Terraform plan.
 * `.github/workflows/grc-gate.yml`: CI policy gate that runs the policies on every pull request to `main`.
+* `verify-evidence.sh`: Verifies a signed evidence bundle's integrity, authenticity and timeliness. Prints `CHAIN INTACT` only if every check passes.
 
 ## Usage
 
