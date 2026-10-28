@@ -8,6 +8,10 @@
 #   evidence.sig.bundle     - Cosign signature bundle written when it was signed (SIG_BUNDLE)
 set -euo pipefail
 
+
+# Git Bash on Windows rewrites arguments that look like paths (such as the identity regexp) before passing them to cosign.exe. Turn that off. This has no effect on Linux or macOS.
+export MSYS_NO_PATHCONV=1
+
 BUNDLE="${1:?usage: verify-evidence.sh <bundle.tar.gz>}"
 SIDECAR="${SIDECAR:-evidence.tar.gz.sha256}"
 SIG_BUNDLE="${SIG_BUNDLE:-evidence.sig.bundle}"
