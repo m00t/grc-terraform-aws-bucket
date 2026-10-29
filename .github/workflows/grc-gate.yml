@@ -78,7 +78,21 @@ jobs:
           tar -czf evidence.tar.gz evidence/
           sha256sum evidence.tar.gz > evidence.tar.gz.sha256
           cosign sign-blob --yes --bundle evidence.sig.bundle evidence.tar.gz
-          
+      
+            # Preservation: copy the signed evidence into the Object Lock vault (write-once).
+      
+      # Runs only when the VAULT_BUCKET repository variable is set.
+      - name: Upload evidence to vault
+        if: ${{ vars.VAULT_BUCKET != '' }}
+        env:
+          VAULT_BUCKET: ${{ vars.VAULT_BUCKET }}
+        run: |
+          prefix="evidence/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          for f in evidence.tar.gz evidence.tar.gz.sha256 evidence.sig.bundle; do
+            aws s3api put-object --bucket "$VAULT_BUCKET" --key "$prefix/$f" --body "$f" --checksum-algorithm SHA256 > /dev/null
+          done
+          echo "Vaulted to s3://$VAULT_BUCKET/$prefix/"    
+
       # Uploads evidence/ as a build artifact, with `if: always()` so the evidence is saved even when the gate fails. CI evidence survives the failure.
       - name: Upload evidence
         if: always()
