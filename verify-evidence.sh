@@ -51,8 +51,29 @@ if ! cosign verify-blob "$BUNDLE" \
 fi
 echo "PASS: AUTHENTICITY + TIMELINESS - signed by grc-gate.yml in m00t/grc-terraform-aws-bucket, logged in Rekor"
 
-# PRESERVATION (stretch): is the vaulted copy still under Object Lock?
-# Not configured yet. Added with the immutable vault.
-echo "SKIP: PRESERVATION - no vault configured"
+# PRESERVATION: is the vaulted copy still retrievable, unaltered, and under Object Lock?
+# Set VAULT_BUCKET and VAULT_KEY (the vaulted evidence.tar.gz) to run this check.
+if [ -n "${VAULT_BUCKET:-}" ] && [ -n "${VAULT_KEY:-}" ]; then
+  mode=$(aws s3api get-object-retention --bucket "$VAULT_BUCKET" --key "$VAULT_KEY" \
+           --query 'Retention.Mode' --output text) || fail "PRESERVATION - no Object Lock retention on s3://$VAULT_BUCKET/$VAULT_KEY"
+  retain=$(aws s3api get-object-retention --bucket "$VAULT_BUCKET" --key "$VAULT_KEY" \
+           --query 'Retention.RetainUntilDate' --output text)
+  now=$(date -u +%Y-%m-%dT%H:%M:%S)
+  [[ "${retain:0:19}" > "$now" ]] || fail "PRESERVATION - retention expired at $retain"
+
+  # The vaulted copy must be byte-for-byte the bundle being verified.
+  copy="./.vault-copy.tar.gz"
+  aws s3 cp --only-show-errors "s3://$VAULT_BUCKET/$VAULT_KEY" "$copy" || fail "PRESERVATION - could not retrieve vaulted copy"
+  if command -v sha256sum >/dev/null 2>&1; then
+    vaulted=$(sha256sum "$copy" | awk '{print $1}')
+  else
+    vaulted=$(shasum -a 256 "$copy" | awk '{print $1}')
+  fi
+  rm -f "$copy"
+  [ "$vaulted" = "$actual" ] || fail "PRESERVATION - vaulted copy differs from this bundle"
+  echo "PASS: PRESERVATION - vaulted copy matches, $mode retention until $retain"
+else
+  echo "SKIP: PRESERVATION - set VAULT_BUCKET and VAULT_KEY to check the vault"
+fi
 
 echo "CHAIN INTACT"
